@@ -1,0 +1,175 @@
+---
+title: "STAT201 Final"
+author: "Alex Creighton"
+date: "5/4/2020"
+output: pdf_document
+---
+
+This document will display the analysis of data from the UVM Medical Center's Genetic Counseling Center, and the functions and code produced in order to properly analyze the data. The data contain values on individuals who have had genetic testing done and what their diagnoses are. 
+
+The document contains formatting and commenting to clearly show the progression of coding and analysis, following the guidelines of Reproducible Research, in order for others to properly follow along and produce their own analysis.
+
+# Section 1 - Setup
+
+```{r step1}
+#initiate all R packages used in analyses
+library(dplyr)
+library(ggplot2)
+library(readxl)
+
+#set working library to read in two data files
+setwd("/Users/alexcreighton/Desktop/UVM/STAT201")
+Test2_gc_payment<-read.csv("Test2_gc_payment.csv")
+Test2_gc<-read_excel("Test2_gc.xls")
+#notice the files are different types - .csv and .xls
+
+#combine two data files into one data frame "genetic"
+genetic<-data.frame(Test2_gc,Test2_gc_payment)
+```
+The data sources used in this analysis come from the UVM Medical Center, and contain information about specific patients, including their visit date, sex, age, state of residence, condition diagnosis, source of admission, charges from their visit, and payment method. 
+
+
+# Section 2 - Data Cleaning
+
+```{r step2}
+#change values of variable "ResState" so that they are "VT", "NY", "NH", 
+#"Other", instead of "VT resident", and so on
+#change the same value within the data frame "genetic", so the variables 
+#in and out of the brackets are the same
+#the new "values" of the variable are set using arrows
+genetic$ResState[genetic$ResState=="VT resident"]<-"VT"
+genetic$ResState[genetic$ResState=="NY resident"]<-"NY"
+genetic$ResState[genetic$ResState=="NH resident"]<-"NH"
+
+#change variable "Charges" so that values that are negative or greater 
+#than 5000 are missing
+genetic$Charges[genetic$Charges<0]<-NA
+genetic$Charges[genetic$Charges>5000]<-NA
+
+#create new variable "agecat" that organizes ages (from variable "age") 
+#into 3 groups: "reschool", "elementary", "middle"
+#create a new variable within the data frame, so set the new variable
+#outside and reference the variable we are taking information from 
+#within the brackets
+genetic$agecat[genetic$age<5]<-"reschool"
+genetic$agecat[genetic$age>=5 & genetic$age<=10]<-"elementary"
+genetic$agecat[genetic$age>10]<-"middle"
+
+#format variable "VisitDate" so it is stored as Date type
+#use the as.Date() function to change the value of the variable 
+#to Date type
+genetic$VisitDate<-as.Date(genetic$VisitDate)
+```
+
+
+# Section 3 - Descriptive Statistics
+
+```{r step3}
+#calculate and display average charges for each level of condition 
+#diagnosis (ccsdx), in descending order of average charge
+avgcharge<-genetic %>% #set avgcharge using the genetic data
+  group_by(ccsdx) %>% #group the desired list by ccsdx
+  summarise(avgCharge=mean(Charges,na.rm=TRUE)) %>% #calculate the average charges and 
+  #summarise the results
+  arrange(-avgCharge) #arrange the list in descending order of avgCharge
+head(avgcharge,10) #use the head() function to list desired values from
+#avgcharge, setting the list limit as 10
+
+#calculate count of diagnoses and list each diagnosis, number of
+#observations with that diagnosis, and average charges for that 
+#diagnosis, in descending order of number of diagnoses
+topdiag<-genetic %>% #set topdiag using the genetic data
+  group_by(ccsdx) %>%
+  summarise(num=n(), #set num as the number of observations for each diagnosis
+            avgCharge=mean(Charges,na.rm=TRUE)) %>%
+  arrange(-num) #arrange the list in descending order of num
+head(topdiag,10) #list the desired values from topdiag, limit 10
+```
+
+
+# Section 4 - Inference Test 1
+
+## Is there a difference in average charges among age categories?
+```{r step4}
+#run an analysis of variance test (one way ANOVA) and use the summary()
+#function in order to find the p-value and determine whether it is
+#significant
+#as we are seeing how age categories are a factor of average charges,
+#we write Charges~agecat
+summary(aov(genetic$Charges~genetic$agecat))
+#p-value = 1.78e-06 - signficant
+
+genetic %>% 
+  ggplot(aes(x=agecat,y=Charges,fill=agecat)) + #use ggplot to graph the
+  #values, setting the x and y values and using fill to produce colors 
+  #based on the variable agecat
+  geom_boxplot() + #use geom_boxplot to produce side by side boxplots 
+  #of the data
+  labs(title = "Difference in Average Charges Among Age Categories",
+       x="Age",
+       y="Average Charges",
+       fill="legend") #label the graph, allowing the legend to display 
+#the age categories clearly
+```
+The p-value of our test equals 1.78e-06, which is significant - we conclude that there is evidence to support that there is a difference in average charges among age categories.
+
+Looking at the side by side boxplot graph, we confirm our conclusion, as there is clearly a distinct difference among age categories.
+
+
+# Section 5 - Inference Test 2
+
+## Is there a difference in average charges between males and females?
+```{r step5}
+#run a t-test in order to find the p-value and determine whether it is
+#significant
+#as we are seeing how sex is a factor of average charges, we write
+#Charges~Sex
+t.test(genetic$Charges~genetic$Sex)
+#p-value = 0.000106 - significant
+
+genetic %>% 
+  ggplot(aes(x=Charges,fill=Sex)) + 
+  geom_histogram() + #geom_histogram produces a histogram of the data
+  facet_grid(Sex~.) + #facet_grid produces side by side histograms of each
+  #facet of the desired variable
+  labs(title = "Difference in Average Charges Between Sexes",
+       x="Average Charges",
+       fill="Sex")
+```
+The p-value of our test equals 0.000106, which is significant - we conclude that there is evidence to support that there is a difference in average charges between males and females.
+
+Looking at the side by side histograms, we confirm our conclusion, as there is clearly a distinct difference between males and females.
+
+
+# Section 6 - Functions
+
+```{r step6}
+bs<-function(x,r) { #x is the vector and r is the number of reps
+  mean_vec=length(x) #set the mean_vec vector to be the same length as x
+  for (i in 1:r) { #set the for loop to repeat for the number of repetitions
+    #r that are provided
+    sample<-sample(x,replace=TRUE) #get a sample the same size as the
+    #vector, selecting from the vector
+    mean_vec[i]<-mean(sample,na.rm=TRUE) #fill the mean_vec vector with the
+    #mean of the sample vector
+  }
+  ll<-round(quantile(mean_vec,0.10),3) 
+  ul<-round(quantile(mean_vec,0.90),3)
+  paste("80% bootstrap confidence interval:", ll, "to", ul)
+}
+bs(genetic$Charges,500)
+#"80% bootstrap confidence interval: 705.777 to 863.852*"
+
+#*each bootstrap run will produce a different outcome
+
+t.test(genetic$Charges,conf.level=0.8)
+#80 percent confidence interval: 701.9185 to 860.0583
+```
+The 80% bootstrap confidence interval and 80% t-test confidence interval are similar, but not the same. This is because, with each bootstrap resampling, the 80% bootstrap interval will change slightly, as it is resampling the data each time. 
+
+After observing the 80% t-test interval, we determine that our bootstrap interval is relatively accurate, as the intervals are always similar. However, the true interval will always be produced by the t-test.
+
+
+### The use of functions in this document allows this data to be analyzed in the specific ways desired. All of the functions, graphs, and code were produced in order to properly analyze the data, and have been annotated and interpreted for universal use.
+
+
